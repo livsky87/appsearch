@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Release notes (optional)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Bump minor version
+        id: bump
+        run: |
+          chmod +x scripts/bump-version.sh
+          NEW_VERSION="$(./scripts/bump-version.sh minor)"
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.properties
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} (minor release)"
+          git push
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK and AAB
+        run: |
+          ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p release-assets
+          APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [[ ! -f "$APK_PATH" ]]; then
+            APK_PATH="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          fi
+          cp "$APK_PATH" "release-assets/appsearch-${{ steps.bump.outputs.new_version }}.apk"
+          AAB_PATH="app/build/outputs/bundle/release/app-release.aab"
+          if [[ -f "$AAB_PATH" ]]; then
+            cp "$AAB_PATH" "release-assets/appsearch-${{ steps.bump.outputs.new_version }}.aab"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.bump.outputs.new_version }}"
+          NOTES="${{ github.event.inputs.release_notes }}"
+          if [[ -z "$NOTES" ]]; then
+            NOTES="Release v${{ steps.bump.outputs.new_version }}"
+          fi
+          gh release create "$TAG" \
+            --title "v${{ steps.bump.outputs.new_version }}" \
+            --notes "$NOTES" \
+            release-assets/*

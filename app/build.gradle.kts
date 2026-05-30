@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,22 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt.android)
 }
+
+val versionProperties = Properties().apply {
+    val versionFile = rootProject.file("version.properties")
+    if (versionFile.exists()) {
+        versionFile.inputStream().use { load(it) }
+    }
+}
+
+fun versionProperty(name: String, defaultValue: String): String =
+    versionProperties.getProperty(name, defaultValue)
+
+val appMajor = versionProperty("major", "1").toInt()
+val appMinor = versionProperty("minor", "0").toInt()
+val appPatch = versionProperty("patch", "0").toInt()
+val appVersionCode = versionProperty("versionCode", "1").toInt()
+val appVersionName = "$appMajor.$appMinor.$appPatch"
 
 android {
     namespace = "com.yoon.js.appsearch"
@@ -14,8 +32,8 @@ android {
         applicationId = "com.yoon.js.appsearch"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -27,6 +45,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (System.getenv("GITHUB_ACTIONS") == "true") {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
