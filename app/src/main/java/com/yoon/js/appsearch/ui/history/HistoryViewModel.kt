@@ -3,6 +3,7 @@ package com.yoon.js.appsearch.ui.history
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yoon.js.appsearch.data.repository.AppSearchRepository
+import com.yoon.js.appsearch.data.share.ShareFlowLogger
 import com.yoon.js.appsearch.domain.model.SourceRecord
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -24,16 +25,26 @@ class HistoryViewModel @Inject constructor(
         loadSources()
     }
 
+    fun refresh() {
+        loadSources()
+    }
+
     fun loadSources() {
         viewModelScope.launch {
+            ShareFlowLogger.d("History", "loadSources start")
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             repository.listSources().fold(
                 onSuccess = { sources ->
+                    ShareFlowLogger.d(
+                        "History",
+                        "loadSources OK count=${sources.size} ids=${sources.take(5).map { it.sourceId }}",
+                    )
                     _uiState.update {
                         it.copy(isLoading = false, sources = sources)
                     }
                 },
                 onFailure = { error ->
+                    ShareFlowLogger.e("History", "loadSources failed", error)
                     _uiState.update {
                         it.copy(
                             isLoading = false,

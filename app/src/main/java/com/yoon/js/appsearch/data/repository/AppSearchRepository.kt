@@ -10,11 +10,13 @@ import androidx.appsearch.app.SetSchemaRequest
 import androidx.appsearch.platformstorage.PlatformStorage
 import com.google.common.util.concurrent.ListenableFuture
 import com.yoon.js.appsearch.data.chunking.TextChunker
+import com.yoon.js.appsearch.data.share.ShareFlowLogger
 import com.yoon.js.appsearch.data.model.SourceDocument
 import com.yoon.js.appsearch.data.model.TextChunkDocument
 import com.yoon.js.appsearch.domain.model.ChunkSearchResult
 import com.yoon.js.appsearch.domain.model.IndexRequest
 import com.yoon.js.appsearch.domain.model.MatchHighlight
+import com.yoon.js.appsearch.domain.model.SourceDetail
 import com.yoon.js.appsearch.domain.model.SourceRecord
 import com.yoon.js.appsearch.domain.model.SourceType
 import com.yoon.js.appsearch.domain.model.TextRange
@@ -31,6 +33,7 @@ import kotlinx.coroutines.withContext
 class AppSearchRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val chunker: TextChunker,
+    private val sourceRegistry: SourceRegistry,
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     private val initMutex = Mutex()
@@ -43,14 +46,20 @@ class AppSearchRepository @Inject constructor(
     }
 
     suspend fun indexContent(request: IndexRequest): Result<Long> = withContext(ioDispatcher) {
+        ShareFlowLogger.d(
+            "Index",
+            "start type=${request.sourceType} textLen=${request.text.length} " +
+                "title=${ShareFlowLogger.preview(request.title, 60)} url=${ShareFlowLogger.preview(request.url, 80)}",
+        )
         runCatching {
             ensureInitialized()
             val trimmed = request.text.trim()
-            if (trimmed.isEmpty()) return@runCatching 0L
+            if (trimmed.isEmpty()) error("저장할 내용이 없습니다")
 
             val sourceId = System.currentTimeMillis()
             val chunks = chunker.chunk(trimmed)
-            if (chunks.isEmpty()) return@runCatching 0L
+            ShareFlowLogger.d("Index", "chunked sourceId=$sourceId chunkCount=${chunks.size}")
+            if (chunks.isEmpty()) error("저장할 내용이 없습니다")
 
             val timestamp = System.currentTimeMillis()
             val sourceDocument = SourceDocument.create(
@@ -78,9 +87,36 @@ class AppSearchRepository @Inject constructor(
                 .addDocuments(sourceDocument)
                 .addDocuments(chunkDocuments)
                 .build()
-            session.putAsync(putRequest).await()
+            val putResult = session.putAsync(putRequest).await()
+            val failures = putResult.getFailures()
+            if (failures.isNotEmpty()) {
+                val message = failures.values.joinToString { it.errorMessage ?: "unknown" }
+                ShareFlowLogger.e("Index", "putAsync failures: $message")
+                error("Indexing failed: $message")
+            }
             session.requestFlushAsync().await()
+
+            val sourceRecord = SourceRecord(
+                sourceId = sourceId,
+                sourceType = request.sourceType,
+                title = sourceDocument.title,
+                url = request.url,
+                imageUrl = request.imageUrl,
+                previewText = sourceDocument.previewText,
+                creationTimestampMillis = timestamp,
+                chunkCount = chunks.size,
+            )
+            sourceRegistry.save(sourceRecord)
+            ShareFlowLogger.d(
+                "Index",
+                "saved sourceId=$sourceId title=${ShareFlowLogger.preview(sourceRecord.title, 60)} " +
+                    "registryCount=${sourceRegistry.listAll().size}",
+            )
             sourceId
+        }.also { result ->
+            result.onFailure { error ->
+                ShareFlowLogger.e("Index", "failed: ${error.message}", error)
+            }
         }
     }
 
@@ -91,40 +127,25 @@ class AppSearchRepository @Inject constructor(
                 sourceType = SourceType.MANUAL,
             ),
         ).map { sourceId ->
-            if (sourceId == 0L) 0 else {
-                getSource(sourceId)?.chunkCount ?: 0
-            }
+            if (sourceId == 0L) 0 else sourceRegistry.get(sourceId)?.chunkCount ?: 0
         }
     }
 
     suspend fun listSources(): Result<List<SourceRecord>> = withContext(ioDispatcher) {
         runCatching {
             ensureInitialized()
-            val session = sessionFuture.await()
-            val searchSpec = SearchSpec.Builder()
-                .addFilterSchemas(SourceDocument.SCHEMA_TYPE)
-                .setRankingStrategy(SearchSpec.RANKING_STRATEGY_CREATION_TIMESTAMP)
-                .build()
-
-            val searchResults = session.search("", searchSpec)
-            val records = mutableListOf<SourceRecord>()
-            try {
-                var page = searchResults.getNextPageAsync().await()
-                while (page.isNotEmpty()) {
-                    page.forEach { searchResult ->
-                        records.add(mapSourceRecord(searchResult))
-                    }
-                    page = searchResults.getNextPageAsync().await()
-                }
-            } finally {
-                searchResults.close()
+            val registrySources = sourceRegistry.listAll()
+            if (registrySources.isNotEmpty()) {
+                return@runCatching registrySources
             }
-            records.sortedByDescending { it.creationTimestampMillis }
+            val fromAppSearch = listSourcesFromAppSearch()
+            fromAppSearch.forEach { sourceRegistry.save(it) }
+            fromAppSearch
         }
     }
 
     suspend fun getSource(sourceId: Long): SourceRecord? = withContext(ioDispatcher) {
-        runCatching {
+        sourceRegistry.get(sourceId) ?: runCatching {
             ensureInitialized()
             val session = sessionFuture.await()
             val request = GetByDocumentIdRequest.Builder(SourceDocument.NAMESPACE)
@@ -136,6 +157,43 @@ class AppSearchRepository @Inject constructor(
         }.getOrNull()
     }
 
+    suspend fun getSourceDetail(sourceId: Long): Result<SourceDetail> = withContext(ioDispatcher) {
+        runCatching {
+            ensureInitialized()
+            val source = getSource(sourceId)
+                ?: error("주입 기록을 찾을 수 없습니다")
+
+            val chunks = if (source.chunkCount <= 0) {
+                emptyList()
+            } else {
+                val chunkIds = (0 until source.chunkCount).map { "${sourceId}_$it" }
+                val session = sessionFuture.await()
+                val request = GetByDocumentIdRequest.Builder(TextChunkDocument.NAMESPACE)
+                    .addIds(chunkIds)
+                    .build()
+                val result = session.getByDocumentIdAsync(request).await()
+                chunkIds.mapNotNull { chunkId ->
+                    result.getSuccesses()[chunkId]
+                        ?.toDocumentClass(TextChunkDocument::class.java)
+                }
+                    .sortedBy { it.chunkIndex }
+                    .map { it.content }
+            }
+
+            val fullText = if (chunks.isNotEmpty()) {
+                chunks.joinToString("\n\n")
+            } else {
+                source.previewText
+            }
+
+            SourceDetail(
+                source = source,
+                fullText = fullText,
+                chunks = chunks,
+            )
+        }
+    }
+
     suspend fun search(query: String): Result<List<ChunkSearchResult>> = withContext(ioDispatcher) {
         runCatching {
             val trimmed = query.trim()
@@ -145,7 +203,9 @@ class AppSearchRepository @Inject constructor(
             val session = sessionFuture.await()
             val searchSpec = SearchSpec.Builder()
                 .addFilterSchemas(TextChunkDocument.SCHEMA_TYPE)
+                .addFilterNamespaces(TextChunkDocument.NAMESPACE)
                 .setRankingStrategy(SearchSpec.RANKING_STRATEGY_RELEVANCE_SCORE)
+                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
                 .setSnippetCount(SNIPPET_COUNT)
                 .setSnippetCountPerProperty(SNIPPET_COUNT_PER_PROPERTY)
                 .setMaxSnippetSize(MAX_SNIPPET_SIZE)
@@ -166,6 +226,30 @@ class AppSearchRepository @Inject constructor(
             }
             results
         }
+    }
+
+    private suspend fun listSourcesFromAppSearch(): List<SourceRecord> {
+        val session = sessionFuture.await()
+        val searchSpec = SearchSpec.Builder()
+            .addFilterSchemas(SourceDocument.SCHEMA_TYPE)
+            .addFilterNamespaces(SourceDocument.NAMESPACE)
+            .setRankingStrategy(SearchSpec.RANKING_STRATEGY_CREATION_TIMESTAMP)
+            .build()
+
+        val searchResults = session.search("*", searchSpec)
+        val records = mutableListOf<SourceRecord>()
+        try {
+            var page = searchResults.getNextPageAsync().await()
+            while (page.isNotEmpty()) {
+                page.forEach { searchResult ->
+                    records.add(mapSourceRecord(searchResult))
+                }
+                page = searchResults.getNextPageAsync().await()
+            }
+        } finally {
+            searchResults.close()
+        }
+        return records.sortedByDescending { it.creationTimestampMillis }
     }
 
     private suspend fun ensureInitialized() {
@@ -200,9 +284,9 @@ class AppSearchRepository @Inject constructor(
         )
     }
 
-    private suspend fun mapSearchResult(searchResult: SearchResult): ChunkSearchResult {
+    private fun mapSearchResult(searchResult: SearchResult): ChunkSearchResult {
         val document = searchResult.genericDocument.toDocumentClass(TextChunkDocument::class.java)
-        val source = getSource(document.sourceId)
+        val source = sourceRegistry.get(document.sourceId)
         return ChunkSearchResult(
             id = document.id,
             sourceId = document.sourceId,

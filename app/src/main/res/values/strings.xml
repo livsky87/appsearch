@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">appsearch</string>
+    <string name="share_toast_success">검색 데이터에 저장했습니다</string>
+    <string name="share_toast_failed">저장 실패: %1$s</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.yoon.js.appsearch.data.model
 
 import androidx.appsearch.annotation.Document
+import com.yoon.js.appsearch.data.web.WebContentValidator
 import com.yoon.js.appsearch.domain.model.SourceType
 
 @Document
@@ -40,11 +41,16 @@ data class SourceDocument(
             creationTimestampMillis: Long = System.currentTimeMillis(),
         ): SourceDocument {
             val trimmedPreview = previewText.trim().take(PREVIEW_MAX_LENGTH)
+            val resolvedTitle = WebContentValidator.sanitizeTitle(
+                title = title.ifBlank { trimmedPreview.take(40) },
+                url = url,
+                previewText = trimmedPreview,
+            )
             return SourceDocument(
                 namespace = NAMESPACE,
                 id = sourceId.toString(),
                 sourceType = sourceType.code,
-                title = title.ifBlank { trimmedPreview.take(40).ifBlank { "Untitled" } },
+                title = resolvedTitle,
                 url = url,
                 imageUrl = imageUrl,
                 previewText = trimmedPreview,

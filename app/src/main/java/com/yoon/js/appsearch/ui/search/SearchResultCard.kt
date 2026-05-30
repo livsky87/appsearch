@@ -29,7 +29,6 @@ fun SearchResultCard(
     val highlight = QueryHighlightFormatter.buildHighlight(
         content = result.content,
         query = query,
-        matches = result.matches,
     )
 
     Card(
@@ -78,15 +77,13 @@ fun SearchResultCard(
                 ranges = highlight.ranges,
             )
 
-            highlight.matchedTerms.forEachIndexed { index, term ->
-                val range = highlight.ranges.getOrNull(index)
-                val positionText = if (range != null) {
-                    " (pos ${range.start}-${range.end})"
-                } else {
-                    ""
-                }
+            highlight.ranges.forEachIndexed { index, range ->
+                val matchedText = result.content.substring(
+                    range.start.coerceIn(0, result.content.length),
+                    range.end.coerceIn(range.start, result.content.length),
+                )
                 Text(
-                    text = "매칭 ${index + 1}: \"$term\" @ content$positionText",
+                    text = "매칭 ${index + 1}: \"$matchedText\" @ content (pos ${range.start}-${range.end})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

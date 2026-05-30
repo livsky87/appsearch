@@ -1,5 +1,6 @@
 package com.yoon.js.appsearch.ui.history
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.yoon.js.appsearch.data.web.WebContentValidator
 import com.yoon.js.appsearch.domain.model.SourceRecord
 import com.yoon.js.appsearch.domain.model.SourceType
 import java.text.SimpleDateFormat
@@ -45,14 +48,20 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit,
+    onSourceClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HistoryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    LaunchedEffect(Unit) {
+        viewModel.loadSources()
+    }
+
     ScaffoldHistory(
         modifier = modifier,
         onNavigateBack = onNavigateBack,
+        onSourceClick = onSourceClick,
         uiState = uiState,
         onRefresh = viewModel::loadSources,
     )
@@ -62,6 +71,7 @@ fun HistoryScreen(
 @Composable
 private fun ScaffoldHistory(
     onNavigateBack: () -> Unit,
+    onSourceClick: (Long) -> Unit,
     uiState: HistoryUiState,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
@@ -131,7 +141,10 @@ private fun ScaffoldHistory(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(uiState.sources, key = { it.sourceId }) { source ->
-                        SourceHistoryCard(source = source)
+                        SourceHistoryCard(
+                            source = source,
+                            onClick = { onSourceClick(source.sourceId) },
+                        )
                     }
                 }
             }
@@ -140,8 +153,15 @@ private fun ScaffoldHistory(
 }
 
 @Composable
-private fun SourceHistoryCard(source: SourceRecord) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun SourceHistoryCard(
+    source: SourceRecord,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
         Row(
             modifier = Modifier.padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -152,7 +172,11 @@ private fun SourceHistoryCard(source: SourceRecord) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = source.title,
+                    text = WebContentValidator.sanitizeTitle(
+                        title = source.title,
+                        url = source.url,
+                        previewText = source.previewText,
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,

@@ -2,4 +2,6 @@
 <resources>
 
     <style name="Theme.Appsearch" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Appsearch.ShareTrampoline" parent="android:Theme.Translucent.NoTitleBar" />
 </resources>
