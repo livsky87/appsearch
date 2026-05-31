@@ -3,6 +3,11 @@ name: Release Current Version
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: Git ref to build (commit SHA, tag, or branch)
+        required: false
+        type: string
+        default: ""
       release_notes:
         description: Release notes (optional)
         required: false
@@ -18,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
 
       - name: Read version
         id: version
