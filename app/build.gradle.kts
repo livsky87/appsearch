@@ -30,7 +30,8 @@ android {
 
     defaultConfig {
         applicationId = "com.yoon.js.appsearch"
-        minSdk = 36
+        // PlatformStorage는 Android 12(API 31)+ 필요. minSdk 36이면 대부분 기기에 설치 불가.
+        minSdk = 31
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
