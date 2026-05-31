@@ -39,6 +39,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_FILE")
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            val keyAlias = System.getenv("KEY_ALIAS")
+            val keyPassword = System.getenv("KEY_PASSWORD")
+
+            if (keystorePath != null && File(keystorePath).exists()) {
+                storeFile = File(keystorePath)
+                storePassword = keystorePassword ?: "android"
+                this.keyAlias = keyAlias ?: "androiddebugkey"
+                this.keyPassword = keyPassword ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -46,8 +62,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // GitHub Release APK는 debug 키로 서명해 기기에 직접 설치 가능하게 한다.
-            signingConfig = signingConfigs.getByName("debug")
+            val releaseSigningConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseSigningConfig.storeFile?.exists() == true) {
+                releaseSigningConfig
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
