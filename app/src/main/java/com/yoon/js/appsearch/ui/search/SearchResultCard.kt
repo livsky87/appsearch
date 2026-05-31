@@ -26,10 +26,8 @@ fun SearchResultCard(
     query: String,
     modifier: Modifier = Modifier,
 ) {
-    val highlight = QueryHighlightFormatter.buildHighlight(
-        content = result.content,
-        query = query,
-    )
+    val snippets = MatchSnippetFormatter.formatSnippets(result, query)
+    val extraMatchCount = MatchSnippetFormatter.formatExtraMatchCount(result, query)
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -72,19 +70,17 @@ fun SearchResultCard(
 
             SourceTypeBadge(sourceType = result.sourceType, url = result.sourceUrl)
 
-            HighlightedText(
-                text = highlight.text,
-                ranges = highlight.ranges,
-            )
-
-            highlight.ranges.forEachIndexed { index, range ->
-                val matchedText = result.content.substring(
-                    range.start.coerceIn(0, result.content.length),
-                    range.end.coerceIn(range.start, result.content.length),
+            snippets.forEach { snippet ->
+                HighlightedText(
+                    text = snippet.text,
+                    ranges = snippet.ranges,
                 )
+            }
+
+            if (extraMatchCount > 0) {
                 Text(
-                    text = "매칭 ${index + 1}: \"$matchedText\" @ content (pos ${range.start}-${range.end})",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "외 ${extraMatchCount}건의 매칭",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

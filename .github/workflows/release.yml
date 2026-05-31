@@ -52,9 +52,22 @@ jobs:
       - name: Collect build artifacts
         run: |
           mkdir -p release-assets
-          APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
-          if [[ ! -f "$APK_PATH" ]]; then
-            APK_PATH="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
+          if [[ -f "$SIGNED_APK" ]]; then
+            APK_PATH="$SIGNED_APK"
+          else
+            APK_PATH="$(find app/build/outputs/apk/release -name '*.apk' ! -name '*-unsigned.apk' | head -n 1)"
+          fi
+          if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
+            echo "Signed release APK not found under app/build/outputs/apk/release"
+            ls -la app/build/outputs/apk/release || true
+            exit 1
+          fi
+          SDK_ROOT="${ANDROID_HOME:-$HOME/.android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]] || ! "$APKSIGNER" verify "$APK_PATH" >/dev/null 2>&1; then
+            echo "APK is not signed: $APK_PATH"
+            exit 1
           fi
           cp "$APK_PATH" "release-assets/appsearch-${{ steps.bump.outputs.new_version }}.apk"
           AAB_PATH="app/build/outputs/bundle/release/app-release.aab"
