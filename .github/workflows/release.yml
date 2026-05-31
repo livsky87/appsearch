@@ -45,14 +45,23 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Prepare debug keystore for signing
+        run: |
+          echo "${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "${{ runner.temp }}/debug.keystore"
+
       - name: Build release APK and AAB
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/debug.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: |
           ./gradlew assembleRelease bundleRelease --no-daemon
 
       - name: Collect build artifacts
         run: |
           mkdir -p release-assets
-          APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
           if [[ ! -f "$APK_PATH" ]]; then
             APK_PATH="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           fi
