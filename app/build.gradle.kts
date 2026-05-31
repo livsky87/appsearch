@@ -45,9 +45,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (System.getenv("GITHUB_ACTIONS") == "true") {
-                signingConfig = signingConfigs.getByName("debug")
-            }
+            // GitHub Release APK는 debug 키로 서명해 기기에 직접 설치 가능하게 한다.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
