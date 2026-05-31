@@ -23,7 +23,7 @@ android.builtInKotlin=false
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 ./gradlew assembleDebug      # Debug APK
-./gradlew assembleRelease    # Release APK (CI: debug keystore 서명)
+./gradlew assembleRelease    # Release APK (로컬: debug fallback, CI: GitHub Secrets debug keystore 서명)
 ./gradlew bundleRelease      # AAB
 ./gradlew test               # JVM 단위 테스트
 ```
@@ -75,6 +75,15 @@ versionCode=3
    - `[Registry]` — `total` 개수
 
 ## 릴리즈 (GitHub Actions)
+
+Release workflow는 저장소 Secrets에 등록된 **로컬 debug keystore**로 APK/AAB를 서명합니다.
+
+| Secret | 설명 |
+|--------|------|
+| `ANDROID_DEBUG_KEYSTORE_BASE64` | `~/.android/debug.keystore` base64 |
+| `ANDROID_DEBUG_KEYSTORE_PASSWORD` | keystore 비밀번호 |
+| `ANDROID_DEBUG_KEY_ALIAS` | 키 별칭 (`androiddebugkey`) |
+| `ANDROID_DEBUG_KEY_PASSWORD` | 키 비밀번호 |
 
 1. GitHub → **Actions** → **Release** → **Run workflow**
 2. (선택) Release notes 입력

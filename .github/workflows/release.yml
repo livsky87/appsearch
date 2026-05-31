@@ -47,20 +47,20 @@ jobs:
 
       - name: Decode and setup keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: |
           if [[ -z "$KEYSTORE_BASE64" ]]; then
-            echo "KEYSTORE_BASE64 not set; release build will use debug keystore fallback."
+            echo "ANDROID_DEBUG_KEYSTORE_BASE64 not set; release build will use debug keystore fallback."
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "${{ runner.temp }}/release.keystore"
-          echo "KEYSTORE_FILE=${{ runner.temp }}/release.keystore" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-android}" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=${KEY_ALIAS:-androiddebugkey}" >> "$GITHUB_ENV"
-          echo "KEY_PASSWORD=${KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
+          echo "$KEYSTORE_BASE64" | base64 -d > "${{ runner.temp }}/debug.keystore"
+          echo "ANDROID_KEYSTORE_PATH=${{ runner.temp }}/debug.keystore" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-android}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=${KEY_ALIAS:-androiddebugkey}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=${KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
 
       - name: Build release APK and AAB
         run: |
