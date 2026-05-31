@@ -76,6 +76,13 @@ fun SearchScreen(
                 singleLine = true,
             )
 
+            if (uiState.query.isNotBlank()) {
+                SearchResultSummaryBar(
+                    results = uiState.results,
+                    isLoading = uiState.isLoading,
+                )
+            }
+
             when {
                 uiState.errorMessage != null -> {
                     Text(
