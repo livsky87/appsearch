@@ -63,7 +63,9 @@ jobs:
             ls -la app/build/outputs/apk/release || true
             exit 1
           fi
-          if ! jarsigner -verify "$APK_PATH" >/dev/null 2>&1; then
+          SDK_ROOT="${ANDROID_HOME:-$HOME/.android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]] || ! "$APKSIGNER" verify "$APK_PATH" >/dev/null 2>&1; then
             echo "APK is not signed: $APK_PATH"
             exit 1
           fi
