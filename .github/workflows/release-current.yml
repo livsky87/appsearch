@@ -1,0 +1,89 @@
+name: Release Current Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Release notes (optional)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          chmod +x scripts/bump-version.sh
+          MAJOR="$(grep '^major=' version.properties | cut -d= -f2)"
+          MINOR="$(grep '^minor=' version.properties | cut -d= -f2)"
+          PATCH="$(grep '^patch=' version.properties | cut -d= -f2)"
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK and AAB
+        run: |
+          ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p release-assets
+          SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
+          if [[ -f "$SIGNED_APK" ]]; then
+            APK_PATH="$SIGNED_APK"
+          else
+            APK_PATH="$(find app/build/outputs/apk/release -name '*.apk' ! -name '*-unsigned.apk' | head -n 1)"
+          fi
+          if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
+            echo "Signed release APK not found under app/build/outputs/apk/release"
+            ls -la app/build/outputs/apk/release || true
+            exit 1
+          fi
+          SDK_ROOT="${ANDROID_HOME:-$HOME/.android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]] || ! "$APKSIGNER" verify "$APK_PATH" >/dev/null 2>&1; then
+            echo "APK is not signed: $APK_PATH"
+            exit 1
+          fi
+          cp "$APK_PATH" "release-assets/appsearch-${{ steps.version.outputs.version }}.apk"
+          AAB_PATH="app/build/outputs/bundle/release/app-release.aab"
+          if [[ -f "$AAB_PATH" ]]; then
+            cp "$AAB_PATH" "release-assets/appsearch-${{ steps.version.outputs.version }}.aab"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          NOTES="${{ github.event.inputs.release_notes }}"
+          if [[ -z "$NOTES" ]]; then
+            NOTES="Release v${{ steps.version.outputs.version }}"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading assets only."
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "v${{ steps.version.outputs.version }}" \
+              --notes "$NOTES" \
+              release-assets/*
+          fi
