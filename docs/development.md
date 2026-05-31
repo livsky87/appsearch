@@ -7,7 +7,7 @@
 | Android Gradle Plugin | 9.0.1 |
 | Kotlin | 2.0.21 |
 | compileSdk / targetSdk | 36 |
-| minSdk | 36 |
+| minSdk | 31 (Android 12+, PlatformStorage 최소) |
 | JDK | 17 |
 
 `gradle.properties` (AGP 9 호환):
