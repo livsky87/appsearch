@@ -91,6 +91,8 @@ Release workflow는 저장소 Secrets에 등록된 **로컬 debug keystore**로 
 
 로컬에서 수동 릴리즈 태그를 만들 경우 `version.properties`와 `versionCode`를 맞춰 주세요.
 
+릴리즈 서명 관련 PR이 `main`과 충돌할 경우, `release.yml`·`app/build.gradle.kts`·`docs/development.md`는 **이미 `main`에 반영된 구현**(GitHub Secrets 기반 debug keystore)을 유지한 채 브랜치에 `main`을 merge하면 됩니다.
+
 ## 관련 문서
 
 - [AppSearch 기술 문서](appsearch.md)
