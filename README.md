@@ -23,7 +23,7 @@ Android 기기에서 텍스트·웹 페이지를 수집하고, **Jetpack AppSear
 - **웹**: OkHttp, Jsoup, WebView
 - **이미지**: Coil
 
-**요구 사항**: minSdk 36, targetSdk 36, JDK 17
+**요구 사항**: minSdk 31 (Android 12+), targetSdk 36, JDK 17
 
 ## 프로젝트 구조
 

@@ -30,7 +30,8 @@ android {
 
     defaultConfig {
         applicationId = "com.yoon.js.appsearch"
-        minSdk = 36
+        // PlatformStorage는 Android 12(API 31)+ 필요. minSdk 36이면 대부분 기기에 설치 불가.
+        minSdk = 31
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
@@ -39,12 +40,18 @@ android {
     }
 
     signingConfigs {
-        create("ciRelease") {
-            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: return@create
-            storeFile = file(keystorePath)
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD").orEmpty()
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS").orEmpty()
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD").orEmpty()
+        create("release") {
+            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+
+            if (keystorePath != null && File(keystorePath).exists()) {
+                storeFile = File(keystorePath)
+                storePassword = keystorePassword ?: "android"
+                this.keyAlias = keyAlias ?: "androiddebugkey"
+                this.keyPassword = keyPassword ?: "android"
+            }
         }
     }
 
@@ -55,9 +62,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-            if (keystorePath != null && file(keystorePath).exists()) {
-                signingConfig = signingConfigs.getByName("ciRelease")
+            val releaseSigningConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseSigningConfig.storeFile?.exists() == true) {
+                releaseSigningConfig
+            } else {
+                signingConfigs.getByName("debug")
             }
         }
     }

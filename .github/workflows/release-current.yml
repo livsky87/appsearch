@@ -1,8 +1,13 @@
-name: Release
+name: Release Current Version
 
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: Git ref to build (commit SHA, tag, or branch)
+        required: false
+        type: string
+        default: ""
       release_notes:
         description: Release notes (optional)
         required: false
@@ -19,28 +24,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+
+      - name: Read version
+        id: version
+        run: |
+          chmod +x scripts/bump-version.sh
+          MAJOR="$(grep '^major=' version.properties | cut -d= -f2)"
+          MINOR="$(grep '^minor=' version.properties | cut -d= -f2)"
+          PATCH="$(grep '^patch=' version.properties | cut -d= -f2)"
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-
-      - name: Bump minor version
-        id: bump
-        run: |
-          chmod +x scripts/bump-version.sh
-          NEW_VERSION="$(./scripts/bump-version.sh minor)"
-          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add version.properties
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} (minor release)"
-          git push
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -86,22 +86,28 @@ jobs:
             echo "APK is not signed: $APK_PATH"
             exit 1
           fi
-          cp "$APK_PATH" "release-assets/appsearch-${{ steps.bump.outputs.new_version }}.apk"
+          cp "$APK_PATH" "release-assets/appsearch-${{ steps.version.outputs.version }}.apk"
           AAB_PATH="app/build/outputs/bundle/release/app-release.aab"
           if [[ -f "$AAB_PATH" ]]; then
-            cp "$AAB_PATH" "release-assets/appsearch-${{ steps.bump.outputs.new_version }}.aab"
+            cp "$AAB_PATH" "release-assets/appsearch-${{ steps.version.outputs.version }}.aab"
           fi
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.bump.outputs.new_version }}"
+          TAG="v${{ steps.version.outputs.version }}"
           NOTES="${{ github.event.inputs.release_notes }}"
           if [[ -z "$NOTES" ]]; then
-            NOTES="Release v${{ steps.bump.outputs.new_version }}"
+            NOTES="Release v${{ steps.version.outputs.version }}"
           fi
-          gh release create "$TAG" \
-            --title "v${{ steps.bump.outputs.new_version }}" \
-            --notes "$NOTES" \
-            release-assets/*
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading assets only."
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "v${{ steps.version.outputs.version }}" \
+              --notes "$NOTES" \
+              release-assets/*
+          fi
